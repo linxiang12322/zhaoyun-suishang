@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#FAF6EF">
+<title>朝雲随行 · 移动端原型 V1.0</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="phone">
+
+  <!-- ===== 模拟状态栏 ===== -->
+  <div class="statusbar">
+    <span class="sb-time" id="sbTime">9:41</span>
+    <span class="sb-icons">📶 🔋</span>
+  </div>
+
+  <main class="app">
+
+    <!-- ========== 欢迎页 ========== -->
+    <section class="screen active" data-screen="welcome">
+      <div class="welcome">
+        <div class="brand-mark"><svg viewBox="0 0 48 48" fill="none"><path d="M14 26a9 9 0 0 1 8-9 12 12 0 0 1 23 3 7 7 0 0 1 1 13H15a6 6 0 0 1-1-7z" fill="#C9A063" fill-opacity=".25" stroke="#B08D57" stroke-width="2" stroke-linejoin="round"/><path d="M24 30c2-5 5-8 9-9" stroke="#B08D57" stroke-width="2.4" stroke-linecap="round"/><circle cx="36" cy="19" r="2.4" fill="#B08D57"/></svg></div>
+        <h1 class="w-title">朝雲随行</h1>
+        <p class="w-sub">秦朝雲的掌上助理</p>
+        <p class="w-tagline">把事情说出来，<br>剩下的交给我安排。</p>
+        <ul class="w-points">
+          <li><span>🗣️</span>自然语言 · 语音 / 文字输入</li>
+          <li><span>🧩</span>AI 事项拆解 · 智能排期</li>
+          <li><span>📅</span>确认后同步到日历与提醒</li>
+        </ul>
+        <button class="btn btn-primary btn-lg" data-go="home">开始使用</button>
+        <p class="w-note">原型仅用于产品评审 · V1.0</p>
+      </div>
+    </section>
+
+    <!-- ========== 首页（严格按设计稿排版） ========== -->
+    <section class="screen" data-screen="home">
+      <div class="home">
+        <!-- 标题行：左侧 logo · 居中标题 · 右侧图标 -->
+        <div class="h2-head">
+          <span class="h2-logo" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M6 15a4.5 4.5 0 0 1 3.8-4.7A6 6 0 0 1 21 9.5a3.4 3.4 0 0 1 .4 6.8H6.8A3 3 0 0 1 6 15z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 15c1-2.6 2.6-4.2 4.6-4.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </span>
+          <h1 class="h2-title">自然语言待办助手</h1>
+          <span class="h2-head-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 19a2.2 2.2 0 0 0 4 0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </span>
+        </div>
+
+        <!-- 欢迎语板块（浅金卡片框） -->
+        <div class="panel h2-hero">
+          <div class="h2-greet-row">
+            <p class="h2-greet" id="hGreet">早安，</p>
+            <div class="h2-avatar">雲</div>
+          </div>
+          <h2 class="h2-main">今天想把什么事情交给我安排？</h2>
+          <p class="h2-sub">用自然语言告诉我你的计划，我来帮你拆解并安排好一切。</p>
+        </div>
+
+        <!-- 输入卡（独立框，只放输入框与字数） -->
+        <div class="panel h2-input">
+          <textarea id="inputText" rows="3" maxlength="2000" placeholder="把今天、明天或本周要做的事情直接告诉我."></textarea>
+          <div class="h2-input-foot">
+            <span class="h2-count" id="charCount">0/2000</span>
+            <svg class="h2-cloud" viewBox="0 0 48 48" aria-hidden="true"><path d="M15 30a9 9 0 0 1 8.2-9 11 11 0 0 1 20.8 2.5A6.4 6.4 0 0 1 45 30H15z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/><path d="M26 33c2-4.6 4.8-7.4 8.4-8.6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg>
+          </div>
+        </div>
+
+        <!-- 操作卡（独立框：输入方式 + 操作按钮） -->
+        <div class="panel h2-actions">
+          <div class="h2-mode">
+            <button class="h2-mode-btn active" id="modeText">文字输入</button>
+            <button class="h2-mode-btn" id="modeVoice">语音输入</button>
+          </div>
+          <div class="h2-ops">
+            <button class="h2-op" id="pasteBtn">粘贴内容</button>
+            <button class="h2-op" id="clearBtn">清空</button>
+            <button class="btn btn-primary btn-sm h2-parse" id="parseBtn" disabled>智能整理</button>
+          </div>
+        </div>
+
+        <!-- 快捷入口（排期范围选择器） -->
+        <div class="panel h2-quick">
+          <p class="h2-range-title">本次安排到</p>
+          <div class="h2-range-row">
+            <button class="h2-q-item selected" data-slot="安排今天">
+              <span class="h2-q-icon"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.6"/><path d="M12 7.5V12l3 2.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+              <span>安排今天</span>
+            </button>
+            <button class="h2-q-item" data-slot="安排明天">
+              <span class="h2-q-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></span>
+              <span>安排明天</span>
+            </button>
+            <button class="h2-q-item" data-slot="本周事项">
+              <span class="h2-q-icon"><svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="5" width="17" height="16" rx="2.5" stroke="currentColor" stroke-width="1.6"/><path d="M3.5 10h17M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M8 15h2M8 18.5h2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+              <span>本周事项</span>
+            </button>
+            <button class="h2-q-item" data-slot="只拆分待办">
+              <span class="h2-q-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M4 12.5l5 5L20 6.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              <span>只拆分待办</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 本次将输出（三行列表） -->
+        <div class="panel h2-features">
+          <p class="h2-out-title">本次将输出</p>
+          <div class="h2-f-row">
+            <span class="h2-f-icon"><svg viewBox="0 0 24 24" fill="none"><rect x="4" y="3.5" width="16" height="17" rx="2.5" stroke="currentColor" stroke-width="1.6"/><path d="M8 9h8M8 13h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+            <div class="h2-f-txt"><b>待办卡片</b><p>拆解为清晰的待办任务清单</p></div>
+          </div>
+          <div class="h2-f-row">
+            <span class="h2-f-icon"><svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="5" width="17" height="16" rx="2.5" stroke="currentColor" stroke-width="1.6"/><path d="M3.5 10h17M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M8.5 15h3M8.5 18h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span>
+            <div class="h2-f-txt"><b>日程安排</b><p>智能规划时间，生成日程安排</p></div>
+          </div>
+          <div class="h2-f-row">
+            <span class="h2-f-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M4 17a3.5 3.5 0 0 1 .8-6.9A5.5 5.5 0 0 1 15.8 9 3.4 3.4 0 0 1 16 15.7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 15l-2 2-2-2M7 17v-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <div class="h2-f-txt"><b>自动同步</b><p>同步到系统日历、提醒和备忘录</p></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 语音录入页 ========== -->
+    <section class="screen" data-screen="voice">
+      <div class="page flow-page">
+        <header class="page-head">
+          <button class="icon-btn" data-back>‹</button>
+          <h2>语音输入</h2>
+          <span class="ph-spacer"></span>
+        </header>
+        <div class="voice-body">
+          <div class="wave" id="wave">
+            <span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span>
+          </div>
+          <p class="voice-dur" id="voiceDur">00:00</p>
+          <div class="voice-transcript card" id="voiceTranscript">
+            正在聆听…说点什么，比如「明早去银行，下午三点开会」
+          </div>
+          <p class="voice-note">录音仅用于本次转写，完成后不长期保存音频</p>
+        </div>
+        <div class="voice-actions">
+          <button class="btn btn-ghost" id="reRecordBtn">重录</button>
+          <button class="btn btn-primary" id="voiceDoneBtn">说完了</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== AI 解析页 ========== -->
+    <section class="screen" data-screen="parsing">
+      <div class="page flow-page center-page">
+        <div class="parsing-ring">
+          <div class="ring-inner">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" stroke="#B08D57" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </div>
+        </div>
+        <h3 class="parsing-title" id="parsingTitle">正在理解你的话…</h3>
+        <ul class="parsing-steps">
+          <li id="ps1">理解语义与时间</li>
+          <li id="ps2">拆分事项 · 提取字段</li>
+          <li id="ps3">检查冲突 · 建议排期</li>
+        </ul>
+        <p class="parsing-note">AI 只负责理解，写入系统前会经过你的确认</p>
+      </div>
+    </section>
+
+    <!-- ========== 事项确认页 ========== -->
+    <section class="screen" data-screen="confirm">
+      <div class="page flow-page">
+        <header class="page-head">
+          <button class="icon-btn" data-back>‹</button>
+          <h2>确认事项</h2>
+          <span class="ph-spacer"></span>
+        </header>
+
+        <div class="range-tip" id="rangeTip">排期范围：今天</div>
+        <div class="summary-bar card">
+          <span class="sum"><b id="sumCount">4</b> 个事项</span>
+          <span class="sum sum-warn"><b id="sumPending">3</b> 个待确认</span>
+          <span class="sum sum-err"><b id="sumConflict">1</b> 处冲突</span>
+        </div>
+
+        <div class="task-cards" id="taskCards">
+          <!-- 由 JS 渲染 -->
+        </div>
+
+        <div class="confirm-actions">
+          <button class="btn btn-ghost" id="saveTodoBtn">仅保存待办</button>
+          <button class="btn btn-primary" id="confirmBtn">确认并排期</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 智能排期页 ========== -->
+    <section class="screen" data-screen="schedule">
+      <div class="page flow-page">
+        <header class="page-head">
+          <button class="icon-btn" data-back>‹</button>
+          <h2 id="schedTitle">今日排期</h2>
+          <span class="ph-spacer"></span>
+        </header>
+
+        <div class="schedule-date card">8月5日 · 星期二</div>
+
+        <div class="conflict-resolved card" id="conflictBanner">
+          <span>✅</span> 已自动调整 1 项弹性任务，避开会议冲突
+        </div>
+
+        <div class="timeline card" id="timeline"><!-- JS 渲染 --></div>
+
+        <div class="candidate card" id="candidateBox">
+          <h3>候选区 · 无法安排</h3>
+          <div class="cand-item"><b>准备周五方案资料</b><p>截止 8/7，但剩余容量不足 20%，建议移至明天</p><button class="btn btn-ghost btn-xs" data-toast="已顺延至明天 10:00">延后到明天</button></div>
+        </div>
+
+        <p class="cap-note">已保留 20% 空闲容量 · 高认知任务安排在高效时段</p>
+
+        <div class="confirm-actions">
+          <button class="btn btn-ghost" id="syncLaterBtn">稍后同步</button>
+          <button class="btn btn-primary" id="syncBtn">同步到日历/提醒</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 同步结果页 ========== -->
+    <section class="screen" data-screen="sync">
+      <div class="page flow-page">
+        <header class="page-head">
+          <button class="icon-btn" data-back>‹</button>
+          <h2>同步结果</h2>
+          <span class="ph-spacer"></span>
+        </header>
+
+        <div class="sync-hero card">
+          <div class="sync-ok-icon">✓</div>
+          <h3 id="syncHeroTitle">3 项已写入系统</h3>
+          <p id="syncStat">日历 2 项 · 提醒事项 1 项</p>
+        </div>
+
+        <div class="sync-list" id="syncList"><!-- JS 渲染 --></div>
+
+        <div class="sync-fallback card">
+          <p>同步遇到问题？可复制本次内容手动保存。</p>
+          <button class="btn btn-ghost btn-block" id="copyBtn">复制全部内容</button>
+        </div>
+
+        <div class="confirm-actions">
+          <button class="btn btn-primary btn-block" data-go="home">完成，回到首页</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 待办页 ========== -->
+    <section class="screen" data-screen="todo">
+      <div class="page tab-page">
+        <header class="page-head">
+          <h2 class="ptitle">待办</h2>
+          <button class="icon-btn" data-go="home">✚</button>
+        </header>
+        <div class="search-box">
+          <span>🔍</span><input id="todoSearch" placeholder="搜索待办…">
+        </div>
+        <div class="tabs" id="todoTabs">
+          <button class="tab active" data-filter="all">全部 <i>6</i></button>
+          <button class="tab" data-filter="today">今天 <i>3</i></button>
+          <button class="tab" data-filter="pending">未完成 <i>4</i></button>
+          <button class="tab" data-filter="done">已完成 <i>2</i></button>
+        </div>
+        <div class="todo-list" id="todoList"><!-- JS 渲染 --></div>
+        <p class="empty-hint" id="todoEmpty" hidden>没有符合条件的待办</p>
+      </div>
+    </section>
+
+    <!-- ========== 日历页 ========== -->
+    <section class="screen" data-screen="calendar">
+      <div class="page tab-page">
+        <header class="page-head">
+          <h2 class="ptitle">日历</h2>
+          <div class="view-toggle" id="viewToggle">
+            <button class="active" data-view="month">月</button>
+            <button data-view="week">周</button>
+          </div>
+        </header>
+
+        <div class="cal-month card">
+          <div class="cal-head">
+            <button class="icon-btn" data-cal="prev">‹</button>
+            <h3 id="calTitle">2026年8月</h3>
+            <button class="icon-btn" data-cal="next">›</button>
+          </div>
+          <div class="cal-weekdays">
+            <span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span><span>日</span>
+          </div>
+          <div class="cal-grid" id="calGrid"><!-- JS 渲染 --></div>
+        </div>
+
+        <div class="card day-schedule" id="daySchedule"><!-- JS 渲染 --></div>
+      </div>
+    </section>
+
+    <!-- ========== 我的页 ========== -->
+    <section class="screen" data-screen="profile">
+      <div class="page tab-page">
+        <header class="page-head">
+          <h2 class="ptitle">我的</h2>
+        </header>
+
+        <div class="card user-card">
+          <div class="avatar avatar-lg">雲</div>
+          <div>
+            <b>本地模式</b>
+            <p>数据保存在本机 · 暂未登录</p>
+          </div>
+        </div>
+
+        <h4 class="group-title">计划偏好</h4>
+        <div class="card group">
+          <div class="row"><span>作息时间</span><b>09:00 - 18:00 ›</b></div>
+          <div class="row"><span>午休时段</span><b>12:00 - 13:30 ›</b></div>
+          <div class="row"><span>任务间缓冲</span><b>10 分钟 ›</b></div>
+          <div class="row"><span>默认提醒</span><b>提前 30 分钟 ›</b></div>
+        </div>
+
+        <h4 class="group-title">权限与同步</h4>
+        <div class="card group">
+          <div class="row" data-perm="麦克风用于语音转写"><span>麦克风</span><em class="ok">已授权</em></div>
+          <div class="row" data-perm="用于写入固定日程"><span>日历</span><em class="ok">已授权</em></div>
+          <div class="row" data-perm="用于写入任务提醒"><span>提醒事项</span><em class="ok">已授权</em></div>
+          <div class="row" data-perm="用于到点提醒"><span>通知</span><em class="off">未开启</em></div>
+        </div>
+
+        <h4 class="group-title">隐私</h4>
+        <div class="card group">
+          <div class="row"><span>无痕模式</span><label class="switch"><input type="checkbox" id="incognito"><i></i></label></div>
+          <div class="row"><span>原始文本保留</span><b>90 天 ›</b></div>
+          <div class="row"><span>导出数据</span><b>›</b></div>
+          <div class="row row-danger"><span>删除所有数据</span><b>›</b></div>
+        </div>
+
+        <h4 class="group-title">关于</h4>
+        <div class="card group">
+          <div class="row"><span>品牌</span><b>朝雲随行 · 秦朝雲的掌上助理</b></div>
+          <div class="row"><span>版本</span><b>V1.0 交互原型</b></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===== 底部导航 ===== -->
+  <nav class="tabbar" id="tabbar">
+    <button class="tab-item active" data-tab="home">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+      <span>首页</span>
+    </button>
+    <button class="tab-item" data-tab="todo">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M9 5h11M9 12h11M9 19h11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M3.5 5l1 1 2-2M3.5 12l1 1 2-2M3.5 19l1 1 2-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span>待办</span>
+    </button>
+    <button class="tab-item" data-tab="calendar">
+      <svg viewBox="0 0 24 24" fill="none"><rect x="3.5" y="5" width="17" height="16" rx="2.5" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 10h17M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="8.5" cy="15.5" r="1.2" fill="currentColor"/><circle cx="13" cy="15.5" r="1.2" fill="currentColor"/><circle cx="17.5" cy="15.5" r="1.2" fill="currentColor"/></svg>
+      <span>日历</span>
+    </button>
+    <button class="tab-item" data-tab="profile">
+      <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8.5" r="4" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 20.5c1.5-3.5 4.2-5 7.5-5s6 1.5 7.5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span>我的</span>
+    </button>
+  </nav>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
