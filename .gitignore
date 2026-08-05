@@ -4,3 +4,7 @@ dist/
 # 系统与临时文件
 .DS_Store
 *.log
+
+# E2E 测试产物（截图与运行脚本目录中的临时文件）
+.e2e/shot_*.png
+.cdp-profile/

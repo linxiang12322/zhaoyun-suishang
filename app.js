@@ -1,4 +1,4 @@
-/* ========== 朝雲随行 · 移动端原型 交互逻辑 ========== */
+/* ========== 巢雲随行 · 移动端原型 交互逻辑 ========== */
 (function () {
   'use strict';
 
@@ -236,6 +236,8 @@
     setTimeout(() => {
       tasks = parseByRules(input.value);
       if (!tasks.length) { tasks = fallbackTasks(); toast('未能从输入中识别到任务，已展示示例'); }
+      // 无痕模式：解析完成后删除原文（PRD 12.2）
+      if (isIncognito()) { input.value = ''; syncInput(); }
       renderConfirm();
       showScreen('confirm');
     }, 3900);
@@ -461,7 +463,20 @@
   });
 
   $('#taskCards').addEventListener('change', (e) => {
-    if (e.target.dataset.field) toast('字段已更新（原型演示）');
+    if (!e.target.dataset.field) return;
+    const card = e.target.closest('.task-card');
+    if (!card) return;
+    const id = +card.dataset.id;
+    const t = tasks.find(x => x.id === id);
+    if (!t) return;
+    const field = e.target.dataset.field;
+    if (field === 'pri') t.pri = e.target.value;
+    if (field === 'sync') {
+      if (t._origTypeLabel === undefined) t._origTypeLabel = t.typeLabel;
+      t.sync = e.target.value;
+      t.typeLabel = e.target.value === '仅应用内' ? '应用内事项' : t._origTypeLabel;
+    }
+    toast('字段已更新：' + (field === 'pri' ? '优先级 → ' + e.target.value : '同步目标 → ' + e.target.value));
   });
 
   /* 仅保存待办 */
@@ -474,8 +489,10 @@
   function seedTodoFromTasks() {
     tasks.forEach(t => {
       if (!todoItems.find(x => x.name === t.title)) {
+        const day = taskDayNum(t);
+        const rel = day === 5 ? '今天' : day === 6 ? '明天' : (t.date || '待定');
         todoItems.unshift({
-          name: t.title, meta: (t.date || '待定') + ' · ' + t.typeLabel,
+          name: t.title, meta: rel + ' · ' + t.typeLabel,
           pri: t.pri, done: false, src: 'AI 拆分'
         });
       }
@@ -531,6 +548,24 @@
   });
 
   $('#syncBtn').addEventListener('click', () => {
+    // 真正写入日历数据（localStorage.calendar），供日历页联动展示
+    const calPatch = {};
+    const seen = new Set();
+    tasks.forEach(t => {
+      if (t.sync === '仅应用内') return; // 仅应用内事项不落日历
+      const day = taskDayNum(t);
+      if (day === null) return;
+      const key = day + '|' + t.title;
+      if (seen.has(key)) return; // 同批次去重
+      seen.add(key);
+      // 与演示事件 + 已存数据按名称去重
+      const existing = (getEvents()[day] || []).some(x => x.name === t.title);
+      if (existing) return;
+      calPatch[day] = calPatch[day] || [];
+      const time = (t.start && t.start !== '待确认') ? t.start : '—';
+      calPatch[day].push({ name: t.title, time, synced: t.sync === '系统日历' });
+    });
+    saveCalendar(calPatch);
     renderSync();
     showScreen('sync');
   });
@@ -572,7 +607,7 @@
 
   /* 复制兜底 */
   $('#copyBtn').addEventListener('click', () => {
-    const text = '朝雲随行 · 待办清单\n' + tasks.map((t, i) =>
+    const text = '巢雲随行 · 待办清单\n' + tasks.map((t, i) =>
       (i + 1) + '. ' + t.title + (t.start && t.start !== '待确认' ? '（' + (t.date || '') + ' ' + t.start + '）' : '（时间待确认）')
     ).join('\n');
     const done = () => toast('已复制，可粘贴到备忘录');
@@ -628,6 +663,21 @@
         </div>
       </div>`).join('');
     $('#todoEmpty').hidden = list.length > 0;
+    updateTodoCounts();
+  }
+
+  /* 分类计数：待办 tab 徽标随真实数据动态计算（全部/今天/未完成/已完成） */
+  function updateTodoCounts() {
+    const counts = {
+      all: todoItems.length,
+      today: todoItems.filter(t => t.meta.startsWith('今天')).length,
+      pending: todoItems.filter(t => !t.done).length,
+      done: todoItems.filter(t => t.done).length
+    };
+    $$('#todoTabs .tab').forEach(b => {
+      const i = b.querySelector('i');
+      if (i) i.textContent = counts[b.dataset.filter] || 0;
+    });
   }
 
   $('#todoList').addEventListener('click', (e) => {
@@ -666,13 +716,53 @@
      日历页
   ================================================== */
   const CAL_YEAR = 2026, CAL_MONTH = 7; // 2026年8月
-  const events = { 3: ['产品评审会'], 5: ['整理方案初稿'], 6: ['去银行办业务', '和客户开产品会', '健身'], 8: ['联系设计师'], 12: ['周会'], 15: ['交方案截止'], 20: ['团建'] };
+  /* 演示事件（首次使用兜底）；用户同步到日历的事项追加进 localStorage.calendar */
+  const demoEvents = {
+    3: [{ name: '产品评审会', time: '09:30', synced: true }],
+    5: [{ name: '整理方案初稿', time: '14:00', synced: true }],
+    6: [{ name: '去银行办业务', time: '08:30', synced: true }, { name: '和客户开产品会', time: '15:00', synced: true }, { name: '健身', time: '19:00', synced: false }],
+    8: [{ name: '联系设计师', time: '11:00', synced: true }],
+    12: [{ name: '周会', time: '10:00', synced: true }],
+    15: [{ name: '交方案截止', time: '全天', synced: true }],
+    20: [{ name: '团建', time: '18:00', synced: false }]
+  };
+
+  /* 日历数据：localStorage 持久化（key: calendar），与演示事件合并 */
+  function loadCalendar() {
+    const stored = loadData().calendar;
+    return (stored && typeof stored === 'object') ? stored : {};
+  }
+  function saveCalendar(patch) {
+    const cur = loadCalendar();
+    Object.keys(patch).forEach(d => {
+      cur[d] = (cur[d] || []).concat(patch[d]);
+    });
+    saveData({ calendar: cur });
+  }
+  function getEvents() {
+    const merged = {};
+    Object.keys(demoEvents).forEach(d => { merged[d] = demoEvents[d].slice(); });
+    const stored = loadCalendar();
+    Object.keys(stored).forEach(d => {
+      merged[d] = (merged[d] || []).concat(stored[d]);
+    });
+    return merged;
+  }
+  /* 任务 → 日号：原型固定 2026 年 8 月（今天=5 日），"明天"=6 日 */
+  function taskDayNum(t) {
+    const m = (t.date || '').match(/(\d{1,2})月(\d{1,2})日/);
+    if (m) return +m[2];
+    if (/明天/.test(t.date || '')) return 6;
+    if (/今天/.test(t.date || '')) return 5;
+    return null;
+  }
 
   function renderCalendar(selectedDay) {
     const first = new Date(CAL_YEAR, CAL_MONTH, 1);
     const daysInMonth = new Date(CAL_YEAR, CAL_MONTH + 1, 0).getDate();
     const offset = (first.getDay() + 6) % 7; // 周一起始
     const today = 5;
+    const events = getEvents();
 
     let cells = '';
     for (let i = 0; i < offset; i++) cells += `<div class="cal-day other"></div>`;
@@ -681,7 +771,7 @@
       const cls = ['cal-day', d === today ? 'today' : '', d === selectedDay ? 'selected' : ''].join(' ');
       cells += `<div class="${cls}" data-day="${d}">
         ${d}
-        ${has.length ? `<span class="dots">${has.map(h => `<i class="${h.includes('同步') || h.includes('评审') ? 'synced' : ''}"></i>`).join('')}</span>` : ''}
+        ${has.length ? `<span class="dots">${has.map(h => `<i class="${h.synced ? 'synced' : ''}"></i>`).join('')}</span>` : ''}
       </div>`;
     }
     $('#calGrid').innerHTML = cells;
@@ -689,18 +779,17 @@
   }
 
   function renderDaySchedule(day) {
-    const list = events[day];
+    const list = getEvents()[day];
     const box = $('#daySchedule');
-    if (!list) {
+    if (!list || !list.length) {
       box.innerHTML = `<h3>${day} 日 · 暂无日程</h3><p style="font-size:13px;color:var(--ink-3);padding-top:6px">说一句话，让它出现在这里</p>`;
       return;
     }
-    const times = { 3: '09:30', 5: '14:00', 6: ['08:30', '15:00', '19:00'], 8: '11:00', 12: '10:00', 15: '全天', 20: '18:00' };
-    box.innerHTML = `<h3>${day} 日 · ${list.length} 项日程</h3>` + list.map((n, i) => `
+    box.innerHTML = `<h3>${day} 日 · ${list.length} 项日程</h3>` + list.map((n) => `
       <div class="ds-item">
-        <span class="ds-time">${Array.isArray(times[day]) ? times[day][i] : times[day]}</span>
-        <span>${n}</span>
-        <span class="ds-sync">已同步 ✓</span>
+        <span class="ds-time">${n.time || '—'}</span>
+        <span>${n.name}</span>
+        <span class="ds-sync">${n.synced ? '已同步 ✓' : '待同步'}</span>
       </div>`).join('');
   }
 
@@ -756,6 +845,8 @@
     input.value = '';
     syncInput();
     $('#incognito').checked = false;
+    rangeSlot = '安排今天';
+    $$('.h2-q-item').forEach(c => c.classList.toggle('selected', c.dataset.slot === rangeSlot));
     renderTodo();
     toast('已删除全部本地数据');
   });
