@@ -6,6 +6,13 @@
   const $ = (s, el) => (el || document).querySelector(s);
   const $$ = (s, el) => Array.from((el || document).querySelectorAll(s));
 
+  /* HTML 转义：LLM 输出/用户输入均为不受信数据，渲染前统一转义防注入 */
+  function escapeHtml(str) {
+    return String(str == null ? '' : str)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
   let toastTimer = null;
   function toast(msg) {
     const t = $('#toast');
@@ -221,6 +228,26 @@
   });
 
   /* ---------- 解析动画 ---------- */
+  /* LLM 精准拆解：优先经本地代理 /api/parse，失败/超时回退规则引擎 */
+  async function tryLLMParse(text) {
+    if (!text || !text.trim()) return null;
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      const resp = await fetch('/api/parse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, todayHint: '今天是 ' + new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0') + '-' + String(new Date().getDate()).padStart(2, '0') } ),
+        signal: controller.signal
+      });
+      clearTimeout(timer);
+      if (!resp.ok) return null; // 未配置 key / 上游失败 → 回退
+      const data = await resp.json();
+      if (!data.tasks || !data.tasks.length) return null;
+      return data.tasks;
+    } catch (e) { return null; }
+  }
+
   function startParsing() {
     showScreen('parsing');
     $$('.parsing-steps li').forEach(li => li.classList.remove('done'));
@@ -233,9 +260,15 @@
         if (id === '#ps2') $('#parsingTitle').textContent = '正在检查冲突…';
       }, 1100 * (i + 1));
     });
-    setTimeout(() => {
-      tasks = parseByRules(input.value);
-      if (!tasks.length) { tasks = fallbackTasks(); toast('未能从输入中识别到任务，已展示示例'); }
+    const llmPromise = tryLLMParse(input.value);
+    setTimeout(async () => {
+      const llmTasks = await llmPromise;
+      if (llmTasks) {
+        tasks = llmTasks;
+      } else {
+        tasks = parseByRules(input.value);
+        if (!tasks.length) { tasks = fallbackTasks(); toast('未能从输入中识别到任务，已展示示例'); }
+      }
       // 无痕模式：解析完成后删除原文（PRD 12.2）
       if (isIncognito()) { input.value = ''; syncInput(); }
       renderConfirm();
@@ -392,27 +425,27 @@
     box.innerHTML = tasks.map(t => `
       <div class="card task-card" data-id="${t.id}">
         <div class="tc-top">
-          <span class="tc-type ${t.type}">${t.typeLabel}</span>
-          ${t.src === 'rule' ? '<span class="tc-ai">自动识别</span>' : t.ai ? '<span class="tc-ai">AI 建议</span>' : ''}
+          <span class="tc-type ${t.type}">${escapeHtml(t.typeLabel)}</span>
+          ${t.src === 'rule' ? '<span class="tc-ai">自动识别</span>' : t.src === 'llm' ? '<span class="tc-ai" style="border-color:var(--gold,#C9A063);color:#B08D57">AI 精准拆解</span>' : t.ai ? '<span class="tc-ai">AI 建议</span>' : ''}
           ${t.conflict ? '<span class="tc-ai" style="border-color:var(--danger);color:var(--danger)">时间冲突</span>' : ''}
         </div>
-        <div class="tc-title">${t.title}</div>
+        <div class="tc-title">${escapeHtml(t.title)}</div>
         <div class="tc-fields">
           <div class="tc-field">
             <span class="fl">📅 日期</span>
-            ${t.pending.indexOf('时间') > -1 ? '<span class="tc-pending">待确认</span>' : `<span class="tc-val">${t.date || '今天'}</span>`}
+            ${t.pending.indexOf('时间') > -1 ? '<span class="tc-pending">待确认</span>' : `<span class="tc-val">${escapeHtml(t.date || '今天')}</span>`}
           </div>
           <div class="tc-field">
             <span class="fl">🕐 时间</span>
             ${t.pending.indexOf('时间') > -1
-              ? `<span class="tc-pending">待确认${t.start && t.start !== '待确认' ? ' · 建议 ' + t.start : ''}</span>`
-              : `<span class="tc-val">${t.start || '—'}${t.end ? ' - ' + t.end : ''}</span>`}
+              ? `<span class="tc-pending">待确认${t.start && t.start !== '待确认' ? ' · 建议 ' + escapeHtml(t.start) : ''}</span>`
+              : `<span class="tc-val">${escapeHtml(t.start || '—')}${t.end ? ' - ' + escapeHtml(t.end) : ''}</span>`}
           </div>
           <div class="tc-field">
             <span class="fl">⏱ 时长</span>
             ${t.pending.indexOf('时长') > -1
-              ? `<span class="tc-pending">待确认${t.dur && t.dur !== '待确认' ? ' · 建议 ' + t.dur : ''}</span>`
-              : `<span class="tc-val">${t.dur || '—'}</span>`}
+              ? `<span class="tc-pending">待确认${t.dur && t.dur !== '待确认' ? ' · 建议 ' + escapeHtml(t.dur) : ''}</span>`
+              : `<span class="tc-val">${escapeHtml(t.dur || '—')}</span>`}
           </div>
           <div class="tc-field">
             <span class="fl">⚑ 优先级</span>
@@ -530,9 +563,9 @@
     timeline.splice(1, 0, { time: '12:00', cls: 'fixed', title: '午休', sub: '固定时段' });
     $('#timeline').innerHTML = timeline.map(it => `
       <div class="tl-row">
-        <span class="tl-time">${it.time}</span>
+        <span class="tl-time">${escapeHtml(it.time)}</span>
         <div class="tl-bar"><span class="tl-dot ${it.cls === 'flex' ? 'flex' : it.cls === 'adj' ? 'adj' : ''}"></span></div>
-        <div class="tl-body"><div class="tl-item ${it.cls}"><b>${it.title}</b><span class="tl-sub">${it.sub}</span></div></div>
+        <div class="tl-body"><div class="tl-item ${it.cls}"><b>${escapeHtml(it.title)}</b><span class="tl-sub">${escapeHtml(it.sub)}</span></div></div>
       </div>`).join('');
 
     const cand = $('#candidateBox');
@@ -586,7 +619,7 @@
     $('#syncList').innerHTML = items.map(it => `
       <div class="sync-item">
         <span class="si-icon ${it.ok ? 'si-ok' : 'si-fail'}">${it.ok ? '✓' : '✕'}</span>
-        <div><div class="si-name">${it.name}</div><div class="si-sub">${it.sub}</div></div>
+        <div><div class="si-name">${escapeHtml(it.name)}</div><div class="si-sub">${escapeHtml(it.sub)}</div></div>
         ${it.ok ? '' : '<button class="btn btn-ghost btn-xs si-retry" id="retryBtn">重试</button>'}
       </div>`).join('');
 
@@ -652,9 +685,9 @@
       <div class="todo-item ${t.done ? 'done' : ''}" data-i="${todoItems.indexOf(t)}">
         <span class="todo-check">✓</span>
         <div>
-          <div class="todo-name">${t.name}</div>
+          <div class="todo-name">${escapeHtml(t.name)}</div>
           <div class="todo-meta">
-            <span class="pri-dot pri-${t.pri}"></span>${t.meta} · ${t.src}
+            <span class="pri-dot pri-${t.pri}"></span>${escapeHtml(t.meta)} · ${escapeHtml(t.src)}
           </div>
         </div>
         <div class="todo-op">
@@ -748,12 +781,25 @@
     });
     return merged;
   }
-  /* 任务 → 日号：原型固定 2026 年 8 月（今天=5 日），"明天"=6 日 */
+  /* 任务 → 日号：原型固定 2026 年 8 月（今天=8月5日 周三）。
+     兼容规则引擎输出（"8月5日（周三）"）与 LLM 输出（今天/明天/后天/周X/周末）。 */
   function taskDayNum(t) {
-    const m = (t.date || '').match(/(\d{1,2})月(\d{1,2})日/);
+    const date = t.date || '';
+    const m = date.match(/(\d{1,2})月(\d{1,2})日/);
     if (m) return +m[2];
-    if (/明天/.test(t.date || '')) return 6;
-    if (/今天/.test(t.date || '')) return 5;
+    if (/后天/.test(date)) return 7;
+    if (/明天|明早|明晚|明日/.test(date)) return 6;
+    if (/今天|今晚|现在/.test(date)) return 5;
+    // 周X：原型固定 8月5日为周三(3)，计算本月下一个该周几
+    const wd = date.match(/周([一二三四五六日天])|星期([一二三四五六日天])/);
+    if (wd) {
+      const target = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '日': 0, '天': 0 }[wd[1] || wd[2]];
+      let off = (target - 3 + 7) % 7;
+      if (off === 0) off = 7;
+      const day = 5 + off;
+      return day <= 31 ? day : null;
+    }
+    if (/周末/.test(date)) return 8; // 8月8日 周六
     return null;
   }
 
@@ -787,8 +833,8 @@
     }
     box.innerHTML = `<h3>${day} 日 · ${list.length} 项日程</h3>` + list.map((n) => `
       <div class="ds-item">
-        <span class="ds-time">${n.time || '—'}</span>
-        <span>${n.name}</span>
+        <span class="ds-time">${escapeHtml(n.time || '—')}</span>
+        <span>${escapeHtml(n.name)}</span>
         <span class="ds-sync">${n.synced ? '已同步 ✓' : '待同步'}</span>
       </div>`).join('');
   }

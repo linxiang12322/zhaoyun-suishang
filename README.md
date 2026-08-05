@@ -52,6 +52,24 @@ python -m http.server 8765
 - 纯原生 HTML / CSS / JavaScript，零依赖，离线可用
 - 设计宽度 375–430px，移动端优先，桌面浏览器自动居中显示手机外壳
 - **语音输入为真实识别**：使用浏览器内置 Web Speech API（Chrome / Edge / 安卓浏览器，中文），需授权麦克风；Firefox 与部分浏览器不支持时自动提示改用文字输入
-- **智能整理为真实拆解**：前端规则引擎（免 API key）从转写/输入文本中提取日期（今天/明天/周X/周末）、时段（上午/下午/晚上/晚点）、具体时间（三点/15:30）、时长、优先级与提醒，未明确的字段标记"待确认"；规则未命中时展示示例兜底
+- **智能整理为双引擎拆解**：
+  1. **LLM 精准拆解（优先，PRD 11 章正式版路径）**：经本地代理 `POST /api/parse`（见 `.e2e/serve.js`）调用 OpenAI 兼容大模型（DeepSeek / 豆包 / 任意自建端点），输出结构化 JSON 任务，支持复杂口语、方言（明儿个/后儿个/傍黑儿）、否定改期、条件与依赖（dependsOn）识别；确认页标注「AI 精准拆解」
+  2. **规则引擎（兜底）**：免 key 前端规则引擎提取日期/时段/具体时间/时长/优先级/提醒，未命中时展示示例兜底；LLM 未配置或调用失败时自动回退
 - 排期页与同步页基于真实拆解结果动态渲染；确认页顶部显示所选排期范围
-- 若要达到 PRD 11 章的"精准拆解"（复杂口语、方言、否定、条件、依赖），需在正式版接入大模型（DeepSeek/豆包）+ 测试集评测
+- 同步到日历/提醒会真实写入 `localStorage.calendar`，日历页联动展示（同名去重）
+
+### 接入大模型（可选，需服务端持有 key）
+
+```bash
+# 1. 启动开发服务器（含 /api/parse 代理）
+cd zhaoyun-suishang
+LLM_PROVIDER=deepseek LLM_API_KEY=sk-xxxx node .e2e/serve.js
+# 可选：LLM_BASE / LLM_MODEL 覆盖默认（deepseek-v4-flash；豆包填接入点 ID）
+
+# 2. 对比评测（规则引擎 vs LLM，PRD 11 章测试集 17 条）
+node .e2e/test-eval.js            # 仅规则引擎（离线基准）
+node .e2e/test-eval.js --llm      # + LLM（走本地代理，需先启动 serve.js）
+node .e2e/test-eval.js --llm --direct   # + LLM 直连（读环境变量，免代理）
+```
+
+未配置 `LLM_API_KEY` 时，代理返回 503，前端自动回退规则引擎，原型照常可用。

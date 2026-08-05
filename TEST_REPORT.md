@@ -81,3 +81,44 @@ chrome --headless=new --remote-debugging-port=9222 --user-data-dir=./.cdp-profil
 # 3. 运行 E2E
 node .e2e/e2e-test.js         # 期望 61/61 通过，截图输出在 .e2e/shot_*.png
 ```
+
+---
+
+# 第二轮：LLM 精准拆解（PRD 11 章正式版路径）
+
+> 验收日期：2026-08-05
+
+## 交付内容
+
+| 交付物 | 说明 |
+| --- | --- |
+| `llm.js` | LLM 适配层（浏览器 + Node 双端）：OpenAI 兼容对话、JSON 输出容错解析、DeepSeek/豆包/自建端点三 provider |
+| `.e2e/serve.js` | 新增 `POST /api/parse` 代理：LLM key 服务端持有（`LLM_PROVIDER/LLM_BASE/LLM_MODEL/LLM_API_KEY`），未配置返回 503 |
+| `test-eval-cases.js` | 精准拆解测试集 17 条：复杂口语/方言/否定改期/条件/依赖/多事项/边界 |
+| `.e2e/test-eval.js` | 对比评测脚本：规则引擎 vs LLM（代理 / 直连双模式） |
+| `.e2e/mock-upstream.js` | 启发式演示 LLM 上游（无 key 时让评测/前端可跑通 LLM 链路） |
+| 前端集成 | 智能整理优先走 LLM，失败/超时/未配置自动回退规则引擎；确认页标注「AI 精准拆解」 |
+
+## 评测结论
+
+| 引擎 | 通过（17 条测试集） |
+| --- | --- |
+| 规则引擎 `parseByRules` | 6/17（35%） |
+| LLM（演示引擎，无 key 环境） | 9/17（53%） |
+
+- **规则引擎短板确认**：方言日期（后儿个/傍黑儿/明儿个）、否定改期残留（"不去健身房"仍生成事项）、依赖关系（dependsOn）完全不识别、口语分段错误（"下班路上"被拆成独立事项）——正是 PRD 11 章预期
+- **LLM 演示引擎优势确认**：方言日期映射、否定只留改期后事项、条件语句不拆分、依赖识别均通过
+- 真实 LLM 评测：配 `LLM_API_KEY` 后运行 `node .e2e/test-eval.js --llm` 或 `--llm --direct` 即可复测
+
+## 前端链路验证（真实 Chrome）
+
+- LLM 模式下方言输入「后儿个傍黑儿去趟银行，明儿个早起把娃送学校」→ 拆解 3 事项 → 确认页标注「AI 精准拆解」✅
+- 同步写入 `localStorage.calendar`（相对日期 今天/明天/周X/周末 正确映射日号）→ 日历联动展示 ✅
+- 无 key（503）时自动回退规则引擎，全流程不受影响 ✅
+- 回归：E2E 61/61 通过 ✅
+
+## 遗留事项（下一轮）
+
+- 真实 LLM 评测需用户提供 key（DeepSeek 平台申请）后跑通
+- prompt 温度/输出 schema 可进一步用真实 LLM 结果迭代（如冲突检查字段）
+- 生产化：代理需加鉴权/限流，key 迁移到后端服务
