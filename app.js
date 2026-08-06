@@ -6,6 +6,17 @@
   const $ = (s, el) => (el || document).querySelector(s);
   const $$ = (s, el) => Array.from((el || document).querySelectorAll(s));
 
+  /* ---------- 真实系统日期基准（不再硬编码 2026/8/5） ---------- */
+  const TODAY = new Date();
+  const CAL_YEAR = TODAY.getFullYear();
+  const CAL_MONTH = TODAY.getMonth();
+  const TODAY_DAY = TODAY.getDate();
+  const TODAY_WD = TODAY.getDay(); // 0=周日
+  const WD_CN = ['日', '一', '二', '三', '四', '五', '六'];
+  function daysInMonth(y, m) { return new Date(y, m + 1, 0).getDate(); }
+  /* 超出当前月份（跨月）则视为无效日，不落日历，避免显示错乱 */
+  function clampDay(d) { const max = daysInMonth(CAL_YEAR, CAL_MONTH); return d >= 1 && d <= max ? d : null; }
+
   /* HTML 转义：LLM 输出/用户输入均为不受信数据，渲染前统一转义防注入 */
   function escapeHtml(str) {
     return String(str == null ? '' : str)
@@ -35,12 +46,23 @@
   }
 
   /* ---------- 屏幕导航 ---------- */
+  function stopVoice() {
+    try { if (currentRec) { currentRec.stop(); } } catch (e) {}
+    clearInterval(voiceTimer);
+  }
   function showScreen(name) {
     $$('.screen').forEach(s => s.classList.toggle('active', s.dataset.screen === name));
     const tabScreens = ['home', 'todo', 'calendar', 'profile'];
     $('#tabbar').classList.toggle('hidden', !tabScreens.includes(name));
     $$('.tab-item').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
     $('.app').scrollTop = 0;
+    /* 离开语音页时停止麦克风与计时器（隐私红线：不能后台偷偷录音） */
+    if (name !== 'voice') stopVoice();
+    /* 返回首页时重置为文字输入模式高亮（修复：从语音页返回后“语音输入”仍显示选中态的错位） */
+    if (name === 'home') {
+      const mt = $('#modeText'), mv = $('#modeVoice');
+      if (mt && mv) { mt.classList.add('active'); mv.classList.remove('active'); }
+    }
   }
 
   document.addEventListener('click', (e) => {
@@ -214,9 +236,9 @@
   });
 
   $('#voiceDoneBtn').addEventListener('click', () => {
-    clearInterval(voiceTimer);
-    if (currentRec) { try { currentRec.stop(); } catch (e) {} }
-    const txt = (voiceFinal || voiceTranscript.textContent || '').replace(/正在聆听….*/g, '').trim();
+    stopVoice();
+    /* 只采用真实识别文本；识别失败/未听到时 voiceFinal 为空，绝不把提示文案当输入 */
+    const txt = (voiceFinal || '').trim();
     if (!txt) {
       toast('没有识别到内容，请重试或改用文字输入');
       showScreen('home');
@@ -248,6 +270,23 @@
     } catch (e) { return null; }
   }
 
+  /* 范围选择器真正生效：把用户选择的"本次安排到"应用到拆解结果 */
+  function applyRangeSlot(list) {
+    if (!list || !list.length) return;
+    if (rangeSlot === '安排今天' || rangeSlot === '安排明天') {
+      const base = new Date(TODAY);
+      if (rangeSlot === '安排明天') base.setDate(TODAY_DAY + 1);
+      const ds = (base.getMonth() + 1) + '月' + base.getDate() + '日（周' + WD_CN[base.getDay()] + '）';
+      list.forEach(t => {
+        t.date = ds; // 强制覆盖为所选日期，不受原文是否含"明天"等词影响
+        if (t.pending.indexOf('时间') === -1 && (!t.start || t.start === '待确认')) t.start = '';
+      });
+    } else if (rangeSlot === '只拆分待办') {
+      list.forEach(t => { t.sync = '仅应用内'; }); // 不生成日程，只进待办
+    }
+    // 本周事项：保留文本识别出的日期（自然落在当周），不强改
+  }
+
   function startParsing() {
     showScreen('parsing');
     $$('.parsing-steps li').forEach(li => li.classList.remove('done'));
@@ -269,6 +308,7 @@
         tasks = parseByRules(input.value);
         if (!tasks.length) { tasks = fallbackTasks(); toast('未能从输入中识别到任务，已展示示例'); }
       }
+      applyRangeSlot(tasks); // 让首页选择的"本次安排到"真正生效
       // 无痕模式：解析完成后删除原文（PRD 12.2）
       if (isIncognito()) { input.value = ''; syncInput(); }
       renderConfirm();
@@ -321,7 +361,7 @@
         let h = +m[2], min = +m[3];
         if ((m[1] === '下午' || m[1] === '晚上') && h < 12) h += 12;
         if (m[1] === '中午' && h < 12) h += 12;
-        return { t: h + ':' + String(min).padStart(2, '0'), fixed: true };
+        return { t: String(h).padStart(2, '0') + ':' + String(min).padStart(2, '0'), fixed: true };
       }
       m = s.match(/(上午|中午|下午|晚上)?\s*([0-9一二三四五六七八九十两]+)\s*点(?:半|钟)?(?:\s*([0-9一二三四五六七八九十]+)\s*分)?/);
       if (m) {
@@ -332,7 +372,7 @@
         if (m[3]) min = /^\d+$/.test(m[3]) ? +m[3] : (CN_NUM[m[3]] || 0);
         if ((m[1] === '下午' || m[1] === '晚上') && h < 12) h += 12;
         if (m[1] === '中午' && h < 12) h += 12;
-        return { t: h + ':' + String(min).padStart(2, '0'), fixed: !!m[1] };
+        return { t: String(h).padStart(2, '0') + ':' + String(min).padStart(2, '0'), fixed: !!m[1] };
       }
       return null;
     }
@@ -429,7 +469,7 @@
           ${t.src === 'rule' ? '<span class="tc-ai">自动识别</span>' : t.src === 'llm' ? '<span class="tc-ai" style="border-color:var(--gold,#C9A063);color:#B08D57">AI 精准拆解</span>' : t.ai ? '<span class="tc-ai">AI 建议</span>' : ''}
           ${t.conflict ? '<span class="tc-ai" style="border-color:var(--danger);color:var(--danger)">时间冲突</span>' : ''}
         </div>
-        <div class="tc-title">${escapeHtml(t.title)}</div>
+        <input class="tc-title-input" data-field="title" value="${escapeHtml(t.title)}">
         <div class="tc-fields">
           <div class="tc-field">
             <span class="fl">📅 日期</span>
@@ -438,13 +478,13 @@
           <div class="tc-field">
             <span class="fl">🕐 时间</span>
             ${t.pending.indexOf('时间') > -1
-              ? `<span class="tc-pending">待确认${t.start && t.start !== '待确认' ? ' · 建议 ' + escapeHtml(t.start) : ''}</span>`
+              ? `<button class="tc-pending tc-edit" data-edit="start" data-id="${t.id}">待确认${t.start && t.start !== '待确认' ? ' · 建议 ' + escapeHtml(t.start) : ''} · 点此设置</button>`
               : `<span class="tc-val">${escapeHtml(t.start || '—')}${t.end ? ' - ' + escapeHtml(t.end) : ''}</span>`}
           </div>
           <div class="tc-field">
             <span class="fl">⏱ 时长</span>
             ${t.pending.indexOf('时长') > -1
-              ? `<span class="tc-pending">待确认${t.dur && t.dur !== '待确认' ? ' · 建议 ' + escapeHtml(t.dur) : ''}</span>`
+              ? `<button class="tc-pending tc-edit" data-edit="dur" data-id="${t.id}">待确认${t.dur && t.dur !== '待确认' ? ' · 建议 ' + escapeHtml(t.dur) : ''} · 点此设置</button>`
               : `<span class="tc-val">${escapeHtml(t.dur || '—')}</span>`}
           </div>
           <div class="tc-field">
@@ -481,6 +521,33 @@
   $('#taskCards').addEventListener('click', (e) => {
     const card = e.target.closest('.task-card');
     if (!card) return;
+    /* 待确认字段：点击设置具体时间 / 时长，闭合人机确认闭环 */
+    const edit = e.target.closest('[data-edit]');
+    if (edit) {
+      const t = tasks.find(x => x.id === +edit.dataset.id);
+      if (!t) return;
+      if (edit.dataset.edit === 'start') {
+        const v = prompt('设置具体时间（格式 小时:分钟，如 14:30）', (t.start && t.start !== '待确认') ? t.start : '');
+        if (v == null) return;
+        const m = v.trim().match(/^(\d{1,2}):(\d{2})$/);
+        if (m && +m[1] >= 0 && +m[1] < 24) {
+          t.start = m[1].padStart(2, '0') + ':' + m[2];
+          t.pending = t.pending.filter(p => p !== '时间');
+          renderConfirm();
+          toast('已设置时间 ' + t.start);
+        } else toast('格式不正确，请用 HH:MM');
+      } else if (edit.dataset.edit === 'dur') {
+        const v = prompt('设置时长（分钟，如 60）', (t.dur && t.dur !== '待确认') ? parseInt(t.dur, 10) : '');
+        if (v == null) return;
+        if (/^\d+$/.test(v.trim()) && +v.trim() > 0) {
+          t.dur = v.trim() + ' 分钟';
+          t.pending = t.pending.filter(p => p !== '时长');
+          renderConfirm();
+          toast('已设置时长 ' + t.dur);
+        } else toast('请输入大于 0 的数字（分钟）');
+      }
+      return;
+    }
     const act = e.target.closest('[data-act]');
     if (!act) return;
     const id = +card.dataset.id;
@@ -488,10 +555,28 @@
       tasks = tasks.filter(t => t.id !== id);
       renderConfirm();
       toast('已删除该事项');
-    } else if (act.dataset.act === 'merge') {
-      toast('已合并重复事项（原型演示）');
     } else if (act.dataset.act === 'split') {
-      toast('已拆分为 2 个事项（原型演示）');
+      const idx = tasks.findIndex(t => t.id === id);
+      if (idx < 0) return;
+      const src = tasks[idx];
+      const copy = Object.assign({}, src, {
+        id: Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        title: src.title + '（拆分）', conflict: false, pending: src.pending.slice()
+      });
+      tasks.splice(idx + 1, 0, copy);
+      renderConfirm();
+      toast('已拆分为独立子项，可分别设置时间');
+    } else if (act.dataset.act === 'merge') {
+      const idx = tasks.findIndex(t => t.id === id);
+      if (idx < 0 || idx >= tasks.length - 1) { toast('已是最后一项，无可合并'); return; }
+      const a = tasks[idx], b = tasks[idx + 1];
+      const order = { high: 3, medium: 2, low: 1 };
+      a.title = a.title + ' + ' + b.title;
+      a.pri = order[a.pri] >= order[b.pri] ? a.pri : b.pri;
+      a.conflict = !!(a.conflict || b.conflict);
+      tasks.splice(idx + 1, 1);
+      renderConfirm();
+      toast('已合并相邻事项');
     }
   });
 
@@ -504,12 +589,15 @@
     if (!t) return;
     const field = e.target.dataset.field;
     if (field === 'pri') t.pri = e.target.value;
-    if (field === 'sync') {
+    else if (field === 'title') t.title = e.target.value;
+    else if (field === 'sync') {
       if (t._origTypeLabel === undefined) t._origTypeLabel = t.typeLabel;
       t.sync = e.target.value;
       t.typeLabel = e.target.value === '仅应用内' ? '应用内事项' : t._origTypeLabel;
     }
-    toast('字段已更新：' + (field === 'pri' ? '优先级 → ' + e.target.value : '同步目标 → ' + e.target.value));
+    toast('字段已更新：' + (field === 'pri' ? '优先级 → ' + e.target.value
+      : field === 'title' ? '标题已修改'
+      : '同步目标 → ' + e.target.value));
   });
 
   /* 仅保存待办 */
@@ -523,10 +611,11 @@
     tasks.forEach(t => {
       if (!todoItems.find(x => x.name === t.title)) {
         const day = taskDayNum(t);
-        const rel = day === 5 ? '今天' : day === 6 ? '明天' : (t.date || '待定');
+        const tomorrow = clampDay(TODAY_DAY + 1);
+        const rel = day === TODAY_DAY ? '今天' : day === tomorrow ? '明天' : (t.date || '待定');
         todoItems.unshift({
           name: t.title, meta: rel + ' · ' + t.typeLabel,
-          pri: t.pri, done: false, src: 'AI 拆分'
+          pri: t.pri, done: false, src: 'AI 拆分', taskId: t.id
         });
       }
     });
@@ -547,20 +636,31 @@
     /* 按所选范围更新标题与日期（原型固定演示 2026 年 8 月） */
     const schedTitles = { '安排今天': '今日排期', '安排明天': '明日排期', '本周事项': '本周排期', '只拆分待办': '待办清单' };
     $('#schedTitle').textContent = schedTitles[rangeSlot];
-    const fmt = (d) => (d.getMonth() + 1) + '月' + d.getDate() + '日 · 星期' + '日一二三四五六'[d.getDay()];
-    const dateMap = { '安排今天': new Date(2026, 7, 5), '安排明天': new Date(2026, 7, 6) };
-    $('.schedule-date').textContent = rangeSlot === '本周事项' ? '8月3日 - 8月9日 · 本周'
-      : rangeSlot === '只拆分待办' ? '仅待办 · 不生成日程'
-      : fmt(dateMap[rangeSlot]);
+    const fmt = (d) => (d.getMonth() + 1) + '月' + d.getDate() + '日 · 星期' + WD_CN[d.getDay()];
+    /* 排期页日期基于真实系统日期，不再硬编码 2026/8/5 */
+    if (rangeSlot === '本周事项') {
+      const monOff = (TODAY_WD + 6) % 7; // 距本周一已过天数（周一为周起点）
+      const mon = new Date(CAL_YEAR, CAL_MONTH, clampDay(TODAY_DAY - monOff) || TODAY_DAY);
+      const sun = new Date(CAL_YEAR, CAL_MONTH, clampDay(TODAY_DAY + (6 - monOff)) || TODAY_DAY);
+      $('.schedule-date').textContent = (mon.getMonth() + 1) + '月' + mon.getDate() + '日 - ' + (sun.getMonth() + 1) + '月' + sun.getDate() + '日 · 本周';
+    } else if (rangeSlot === '只拆分待办') {
+      $('.schedule-date').textContent = '仅待办 · 不生成日程';
+    } else {
+      const target = rangeSlot === '安排明天' ? (clampDay(TODAY_DAY + 1) || TODAY_DAY) : TODAY_DAY;
+      $('.schedule-date').textContent = fmt(new Date(CAL_YEAR, CAL_MONTH, target));
+    }
 
-    /* 时间轴：基于真实拆解结果生成 */
-    const timeline = tasks.map(t => ({
-      time: (t.start && t.start !== '待确认') ? t.start : '待排',
-      cls: t.type === 'fixed' ? 'fixed' : t.type === 'flexible' ? 'flex' : 'reminder',
-      title: t.title,
-      sub: t.typeLabel + ' · ' + t.sync + (t.pending.length ? ' · 待确认' : '')
-    }));
-    timeline.splice(1, 0, { time: '12:00', cls: 'fixed', title: '午休', sub: '固定时段' });
+    /* 时间轴：有时间的按时间升序，待排的置底；午休固定 12:00 插入正确位置 */
+    const withTime = tasks.filter(t => t.start && t.start !== '待确认')
+      .sort((a, b) => a.start.localeCompare(b.start))
+      .map(t => ({ time: t.start, cls: t.type === 'fixed' ? 'fixed' : t.type === 'flexible' ? 'flex' : 'reminder', title: t.title, sub: t.typeLabel + ' · ' + t.sync + (t.pending.length ? ' · 待确认' : '') }));
+    const noTime = tasks.filter(t => !(t.start && t.start !== '待确认'))
+      .map(t => ({ time: '待排', cls: 'flex', title: t.title, sub: t.typeLabel + ' · ' + t.sync + ' · 待确认' }));
+    const lunch = { time: '12:00', cls: 'fixed', title: '午休', sub: '固定时段' };
+    const timeline = withTime.slice();
+    const li = timeline.findIndex(x => x.time > '12:00');
+    if (li === -1) timeline.push(lunch); else timeline.splice(li, 0, lunch);
+    timeline.push(...noTime);
     $('#timeline').innerHTML = timeline.map(it => `
       <div class="tl-row">
         <span class="tl-time">${escapeHtml(it.time)}</span>
@@ -588,17 +688,15 @@
       if (t.sync === '仅应用内') return; // 仅应用内事项不落日历
       const day = taskDayNum(t);
       if (day === null) return;
-      const key = day + '|' + t.title;
-      if (seen.has(key)) return; // 同批次去重
+      const key = 't' + t.id; // 用任务 id 去重，而非名称（避免同名演示事项吞掉真实数据）
+      if (seen.has(key)) return;
       seen.add(key);
-      // 与演示事件 + 已存数据按名称去重
-      const existing = (getEvents()[day] || []).some(x => x.name === t.title);
-      if (existing) return;
       calPatch[day] = calPatch[day] || [];
       const time = (t.start && t.start !== '待确认') ? t.start : '—';
-      calPatch[day].push({ name: t.title, time, synced: t.sync === '系统日历' });
+      calPatch[day].push({ id: key, name: t.title, time, synced: t.sync === '系统日历' });
     });
-    saveCalendar(calPatch);
+    saveCalendar(calPatch); // 演示数据不参与；saveCalendar 按 id 幂等合并，不丢失既有数据
+    seedTodoFromTasks(); // 同步排期的同时把事项同步进应用内待办，保证待办↔日历双向一致
     renderSync();
     showScreen('sync');
   });
@@ -606,36 +704,51 @@
   /* ==================================================
      同步结果页
   ================================================== */
-  let syncFail = true;
+  function removeCalEventById(id) {
+    if (id == null) return;
+    const cur = loadCalendar();
+    let changed = false;
+    const key = 't' + id;
+    Object.keys(cur).forEach(d => {
+      const before = cur[d].length;
+      cur[d] = cur[d].filter(x => !(x.id && x.id === key));
+      if (cur[d].length !== before) changed = true;
+    });
+    if (changed) saveData({ calendar: cur });
+  }
+  /* 待办完成状态 → 同步到日历事件，保证双向视图一致 */
+  function updateCalEventDone(id, done) {
+    if (id == null) return;
+    const cur = loadCalendar();
+    const key = 't' + id;
+    let changed = false;
+    Object.keys(cur).forEach(d => {
+      cur[d].forEach(ev => { if (ev.id && ev.id === key) { ev.done = done; changed = true; } });
+    });
+    if (changed) saveData({ calendar: cur });
+  }
+
   function renderSync() {
-    const items = tasks.map((t, i) => ({
+    const items = tasks.map((t) => ({
       icon: t.sync === '系统日历' ? '📅' : '🔔',
-      ok: !(i === tasks.length - 1 && syncFail),
+      ok: true, // 本地写入必然成功，不再伪造失败状态
       name: t.title,
       sub: t.start && t.start !== '待确认'
-        ? (t.sync === '系统日历' ? '已写入系统日历 · ' : '已写入提醒事项 · ') + (t.date || '') + ' ' + t.start
-        : '时间待确认，已保存到应用内待办'
+        ? (t.sync === '系统日历' ? '已写入系统日历 · ' : t.sync === '提醒事项' ? '已写入提醒事项 · ' : '已保存到应用内待办 · ') + (t.date || '') + ' ' + t.start
+        : (t.sync === '仅应用内' ? '已保存到应用内待办' : '时间待确认，已保存到应用内待办')
     }));
     $('#syncList').innerHTML = items.map(it => `
       <div class="sync-item">
-        <span class="si-icon ${it.ok ? 'si-ok' : 'si-fail'}">${it.ok ? '✓' : '✕'}</span>
+        <span class="si-icon si-ok">✓</span>
         <div><div class="si-name">${escapeHtml(it.name)}</div><div class="si-sub">${escapeHtml(it.sub)}</div></div>
-        ${it.ok ? '' : '<button class="btn btn-ghost btn-xs si-retry" id="retryBtn">重试</button>'}
       </div>`).join('');
 
-    const okCount = items.filter(i => i.ok).length;
-    const cal = items.filter(i => i.ok && i.icon === '📅').length;
-    const rem = items.filter(i => i.ok && i.icon === '🔔').length;
+    const okCount = items.length;
+    const cal = items.filter(i => i.icon === '📅').length;
+    const rem = items.filter(i => i.icon === '🔔').length;
     $('#syncHeroTitle').textContent = okCount + ' 项已写入系统';
     const stat = (cal ? '日历 ' + cal + ' 项' : '') + (cal && rem ? ' · ' : '') + (rem ? '提醒事项 ' + rem + ' 项' : '');
-    $('#syncStat').textContent = stat || '待确认时间，已保存到应用内';
-
-    const retry = $('#retryBtn');
-    if (retry) retry.addEventListener('click', () => {
-      syncFail = false;
-      renderSync();
-      toast('重试成功，已写入系统日历');
-    });
+    $('#syncStat').textContent = stat || '已保存到应用内待办';
   }
 
   /* 复制兜底 */
@@ -722,12 +835,15 @@
       t.done = !t.done;
       renderTodo();
       saveTodos();
+      updateCalEventDone(t.taskId, t.done); // 完成状态同步到日历事件
     } else if (e.target.closest('.op-defer')) {
       t.meta = t.meta.replace(/今天/, '明天').replace(/本周末/, '明天');
       renderTodo();
       saveTodos();
       toast('已顺延到明天');
     } else if (e.target.closest('.op-del')) {
+      const t = todoItems[idx];
+      if (t.taskId != null) removeCalEventById(t.taskId); // 联动删除日历事件，双向同步
       todoItems.splice(idx, 1);
       renderTodo();
       saveTodos();
@@ -748,16 +864,16 @@
   /* ==================================================
      日历页
   ================================================== */
-  const CAL_YEAR = 2026, CAL_MONTH = 7; // 2026年8月
-  /* 演示事件（首次使用兜底）；用户同步到日历的事项追加进 localStorage.calendar */
+  /* 演示事件（仅用于空日历的视觉兜底，绝不参与用户数据的去重/写入） */
+  /* 注：CAL_YEAR / CAL_MONTH 已在文件顶部按真实系统日期统一定义 */
   const demoEvents = {
-    3: [{ name: '产品评审会', time: '09:30', synced: true }],
-    5: [{ name: '整理方案初稿', time: '14:00', synced: true }],
-    6: [{ name: '去银行办业务', time: '08:30', synced: true }, { name: '和客户开产品会', time: '15:00', synced: true }, { name: '健身', time: '19:00', synced: false }],
-    8: [{ name: '联系设计师', time: '11:00', synced: true }],
-    12: [{ name: '周会', time: '10:00', synced: true }],
-    15: [{ name: '交方案截止', time: '全天', synced: true }],
-    20: [{ name: '团建', time: '18:00', synced: false }]
+    3: [{ id: 'demo_3_0', name: '产品评审会', time: '09:30', synced: true }],
+    5: [{ id: 'demo_5_0', name: '整理方案初稿', time: '14:00', synced: true }],
+    6: [{ id: 'demo_6_0', name: '去银行办业务', time: '08:30', synced: true }, { id: 'demo_6_1', name: '和客户开产品会', time: '15:00', synced: true }, { id: 'demo_6_2', name: '健身', time: '19:00', synced: false }],
+    8: [{ id: 'demo_8_0', name: '联系设计师', time: '11:00', synced: true }],
+    12: [{ id: 'demo_12_0', name: '周会', time: '10:00', synced: true }],
+    15: [{ id: 'demo_15_0', name: '交方案截止', time: '全天', synced: true }],
+    20: [{ id: 'demo_20_0', name: '团建', time: '18:00', synced: false }]
   };
 
   /* 日历数据：localStorage 持久化（key: calendar），与演示事件合并 */
@@ -768,7 +884,13 @@
   function saveCalendar(patch) {
     const cur = loadCalendar();
     Object.keys(patch).forEach(d => {
-      cur[d] = (cur[d] || []).concat(patch[d]);
+      const arr = cur[d] || [];
+      // 按 id 幂等：已存在则更新，不存在则追加，避免重复累加
+      patch[d].forEach(ev => {
+        const idx = arr.findIndex(x => x.id && ev.id && x.id === ev.id);
+        if (idx >= 0) arr[idx] = ev; else arr.push(ev);
+      });
+      cur[d] = arr;
     });
     saveData({ calendar: cur });
   }
@@ -781,25 +903,28 @@
     });
     return merged;
   }
-  /* 任务 → 日号：原型固定 2026 年 8 月（今天=8月5日 周三）。
-     兼容规则引擎输出（"8月5日（周三）"）与 LLM 输出（今天/明天/后天/周X/周末）。 */
+  /* 任务 → 日号：基于真实系统日期推算，不再硬编码 2026/8/5。
+     兼容规则引擎输出（"8月5日（周X）"）与 LLM 输出（今天/明天/后天/周X/周末）。 */
   function taskDayNum(t) {
     const date = t.date || '';
     const m = date.match(/(\d{1,2})月(\d{1,2})日/);
-    if (m) return +m[2];
-    if (/后天/.test(date)) return 7;
-    if (/明天|明早|明晚|明日/.test(date)) return 6;
-    if (/今天|今晚|现在/.test(date)) return 5;
-    // 周X：原型固定 8月5日为周三(3)，计算本月下一个该周几
+    if (m) { const d = +m[2]; return clampDay(d); }            // 已带具体日期
+    if (/后天/.test(date)) return clampDay(TODAY_DAY + 2);
+    if (/明天|明早|明晚|明日/.test(date)) return clampDay(TODAY_DAY + 1);
+    if (/今天|今晚|现在/.test(date)) return TODAY_DAY;          // 真实今天
+    // 周X：以真实今天所在周几为锚，推算本月下一个该周几
     const wd = date.match(/周([一二三四五六日天])|星期([一二三四五六日天])/);
     if (wd) {
       const target = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '日': 0, '天': 0 }[wd[1] || wd[2]];
-      let off = (target - 3 + 7) % 7;
+      let off = (target - TODAY_WD + 7) % 7;
       if (off === 0) off = 7;
-      const day = 5 + off;
-      return day <= 31 ? day : null;
+      return clampDay(TODAY_DAY + off);
     }
-    if (/周末/.test(date)) return 8; // 8月8日 周六
+    if (/周末/.test(date)) {                                     // 下一个周六
+      let off = (6 - TODAY_WD + 7) % 7;
+      if (off === 0) off = 7;
+      return clampDay(TODAY_DAY + off);
+    }
     return null;
   }
 
@@ -807,7 +932,7 @@
     const first = new Date(CAL_YEAR, CAL_MONTH, 1);
     const daysInMonth = new Date(CAL_YEAR, CAL_MONTH + 1, 0).getDate();
     const offset = (first.getDay() + 6) % 7; // 周一起始
-    const today = 5;
+    const today = TODAY_DAY;
     const events = getEvents();
 
     let cells = '';
@@ -885,7 +1010,23 @@
     toast(e.target.checked ? '无痕模式已开启：草稿不再保存，解析后删除原文' : '无痕模式已关闭');
   });
 
+  /* 删除全部数据：二次确认，避免误操作清空所有本地数据 */
+  let dangerArm = false, dangerTimer = null;
   $('.row-danger').addEventListener('click', () => {
+    const row = $('.row-danger');
+    const label = row.querySelector('span');
+    if (!dangerArm) {
+      dangerArm = true;
+      row.classList.add('armed');
+      label.textContent = '⚠ 再次点击确认删除全部数据';
+      dangerTimer = setTimeout(() => {
+        dangerArm = false; row.classList.remove('armed');
+        label.textContent = '删除所有数据';
+      }, 3000);
+      return;
+    }
+    clearTimeout(dangerTimer);
+    dangerArm = false; row.classList.remove('armed');
     localStorage.removeItem(LS_KEY);
     todoItems = defaultTodos.slice();
     input.value = '';
