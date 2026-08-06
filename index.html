@@ -298,6 +298,17 @@
           <div class="cal-grid" id="calGrid"><!-- JS 渲染 --></div>
         </div>
 
+        <button class="btn btn-primary btn-block cal-add-btn" id="calAddBtn">＋ 在 <span id="calAddDayLabel"></span> 日添加日程</button>
+        <div class="card cal-add-form hidden" id="calAddForm">
+          <h3>添加日程</h3>
+          <label class="fld">名称<input id="calEventName" type="text" placeholder="如：团队周会" maxlength="40"></label>
+          <label class="fld">时间<input id="calEventTime" type="text" placeholder="如 14:30 或 全天" maxlength="20"></label>
+          <div class="cal-add-actions">
+            <button class="btn btn-ghost" id="calAddCancel">取消</button>
+            <button class="btn btn-primary" id="calAddSave">保存</button>
+          </div>
+        </div>
+
         <div class="card day-schedule" id="daySchedule"><!-- JS 渲染 --></div>
       </div>
     </section>
