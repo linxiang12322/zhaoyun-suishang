@@ -1134,8 +1134,8 @@
 
   /* 云同步（GitHub Gist 作为免服务器后端，实现跨设备同步） */
   const GIST_FILENAME = 'zhaoyun-backup.json';
-  function gistToken() { return (loadData().gistToken || '').trim(); }
-  function gistId() { const el = $('#gistIdView'); const v = el ? el.value.trim() : ''; return v || (loadData().gistId || ''); }
+  function gistToken() { return (loadData().gistToken || '').replace(/\s+/g, ''); }
+  function gistId() { const el = $('#gistIdView'); const v = el ? el.value.replace(/\s+/g, '') : ''; return v || (loadData().gistId || ''); }
   function setCloudStatus(msg, ok) {
     const el = $('#cloudStatus'); if (!el) return;
     el.textContent = msg; el.className = (ok === false) ? 'off' : 'ok';
@@ -1143,8 +1143,8 @@
   const _tk = gistToken(); if (_tk) $('#gistToken').value = _tk;
   function refreshGistIdView() { const el = $('#gistIdView'); if (el) el.value = gistId() || ''; }
   refreshGistIdView();
-  $('#gistToken').addEventListener('change', (e) => { saveData({ gistToken: e.target.value.trim() }); toast('Token 已保存（仅存于本机浏览器）'); });
-  $('#gistIdView').addEventListener('change', (e) => { saveData({ gistId: e.target.value.trim() }); toast('备份 ID 已保存（仅存于本机浏览器）'); });
+  $('#gistToken').addEventListener('change', (e) => { saveData({ gistToken: e.target.value.replace(/\s+/g, '') }); toast('Token 已保存（已自动去除空格/换行，仅存本机浏览器）'); });
+  $('#gistIdView').addEventListener('change', (e) => { saveData({ gistId: e.target.value.replace(/\s+/g, '') }); toast('备份 ID 已保存（已自动去除空格/换行，仅存本机浏览器）'); });
   async function gistApi(method, id, body, token) {
     const url = id ? ('https://api.github.com/gists/' + id) : 'https://api.github.com/gists';
     const res = await fetch(url, {
