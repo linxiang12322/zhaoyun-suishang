@@ -957,13 +957,12 @@
       box.innerHTML = `<h3>${day} 日 · 暂无日程</h3><p style="font-size:13px;color:var(--ink-3);padding-top:6px">点下方“添加日程”手动添加，或回首页说一句话自动排期</p>`;
       return;
     }
-    const isDemo = (n) => n.id && String(n.id).indexOf('demo_') === 0;
     box.innerHTML = `<h3>${day} 日 · ${list.length} 项日程</h3>` + list.map((n) => `
       <div class="ds-item">
         <span class="ds-time">${escapeHtml(n.time || '—')}</span>
         <span class="ds-name">${escapeHtml(n.name)}</span>
         <span class="ds-sync">${n.synced ? '已同步 ✓' : '待同步'}</span>
-        ${isDemo(n) ? '' : `<button class="ds-del" data-del data-day="${day}" data-eid="${escapeHtml(n.id || '')}" title="删除日程">✕</button>`}
+        <button class="ds-del" data-del data-day="${day}" data-eid="${escapeHtml(n.id || '')}" data-name="${escapeHtml(n.name)}" title="删除日程">✕</button>
       </div>`).join('');
   }
 
@@ -993,22 +992,32 @@
     renderCalendar(calSelected);
   });
 
-  /* 日历内删除日程：仅删除用户自己添加的（id 非 demo_ 开头），演示数据不可删 */
-  function deleteCalEvent(day, eid) {
+  /* 日历内删除日程：用户自建项从 localStorage 删；演示数据从 demoEvents 中删 */
+  function deleteCalEvent(day, eid, name) {
+    // 优先按 id 删除用户数据
     const cur = loadCalendar();
     const arr = cur[day] || [];
-    const idx = arr.findIndex(x => (eid && x.id === eid) || (!eid && x.name));
-    if (idx < 0) return false;
-    arr.splice(idx, 1);
-    if (arr.length) cur[day] = arr; else delete cur[day];
-    saveData({ calendar: cur });
+    const idx = arr.findIndex(x => (eid && x.id === eid) || (!eid && x.name === name));
+    if (idx >= 0) {
+      arr.splice(idx, 1);
+      if (arr.length) cur[day] = arr; else delete cur[day];
+      saveData({ calendar: cur });
+      return true;
+    }
+    // 若未命中，则尝试删除演示数据
+    const darr = demoEvents[day];
+    if (!darr) return false;
+    const didx = darr.findIndex(x => (eid && x.id === eid) || x.name === name);
+    if (didx < 0) return false;
+    darr.splice(didx, 1);
+    if (!darr.length) delete demoEvents[day];
     return true;
   }
   $('#daySchedule').addEventListener('click', (e) => {
     const del = e.target.closest('[data-del]');
     if (!del) return;
     const day = +del.dataset.day;
-    if (deleteCalEvent(day, del.dataset.eid)) {
+    if (deleteCalEvent(day, del.dataset.eid, del.dataset.name)) {
       renderCalendar(calSelected);
       renderDaySchedule(day);
       toast('已删除该日程');
@@ -1019,14 +1028,16 @@
 
   /* 日历内直接添加日程（针对当前选中日） */
   function refreshCalAddLabel() { const el = $('#calAddDayLabel'); if (el) el.textContent = calSelected; }
-  $('#calAddBtn').addEventListener('click', () => {
+  function openCalAddModal() {
     refreshCalAddLabel();
-    $('#calAddForm').classList.remove('hidden');
+    $('#calAddModal').classList.remove('hidden');
     $('#calEventName').value = '';
     $('#calEventTime').value = '';
     $('#calEventName').focus();
-  });
-  $('#calAddCancel').addEventListener('click', () => $('#calAddForm').classList.add('hidden'));
+  }
+  function closeCalAddModal() { $('#calAddModal').classList.add('hidden'); }
+  $('#calAddBtn').addEventListener('click', openCalAddModal);
+  $('#calAddCancel').addEventListener('click', closeCalAddModal);
   $('#calAddSave').addEventListener('click', () => {
     const name = $('#calEventName').value.trim();
     if (!name) { toast('请填写日程名称'); return; }
@@ -1036,10 +1047,14 @@
     cur[day] = cur[day] || [];
     cur[day].push({ id: 'c' + Date.now(), name, time, synced: false });
     saveData({ calendar: cur });
-    $('#calAddForm').classList.add('hidden');
+    closeCalAddModal();
     renderCalendar(calSelected);
     renderDaySchedule(day);
     toast('已添加日程：' + name);
+  });
+  // 点击遮罩关闭弹窗
+  $('#calAddModal').addEventListener('click', (e) => {
+    if (e.target.id === 'calAddModal') closeCalAddModal();
   });
 
   $('#viewToggle').addEventListener('click', (e) => {
