@@ -1135,7 +1135,7 @@
   /* 云同步（GitHub Gist 作为免服务器后端，实现跨设备同步） */
   const GIST_FILENAME = 'zhaoyun-backup.json';
   function gistToken() { return (loadData().gistToken || '').trim(); }
-  function gistId() { return loadData().gistId || ''; }
+  function gistId() { const el = $('#gistIdView'); const v = el ? el.value.trim() : ''; return v || (loadData().gistId || ''); }
   function setCloudStatus(msg, ok) {
     const el = $('#cloudStatus'); if (!el) return;
     el.textContent = msg; el.className = (ok === false) ? 'off' : 'ok';
@@ -1144,6 +1144,7 @@
   function refreshGistIdView() { const el = $('#gistIdView'); if (el) el.value = gistId() || ''; }
   refreshGistIdView();
   $('#gistToken').addEventListener('change', (e) => { saveData({ gistToken: e.target.value.trim() }); toast('Token 已保存（仅存于本机浏览器）'); });
+  $('#gistIdView').addEventListener('change', (e) => { saveData({ gistId: e.target.value.trim() }); toast('备份 ID 已保存（仅存于本机浏览器）'); });
   async function gistApi(method, id, body, token) {
     const url = id ? ('https://api.github.com/gists/' + id) : 'https://api.github.com/gists';
     const res = await fetch(url, {
@@ -1174,7 +1175,8 @@
   }
   async function pullFromCloud() {
     const token = gistToken(); const id = gistId();
-    if (!token || !id) { toast('请先“同步到云端”一次'); return; }
+    if (!token) { toast('请先在上方填写 GitHub Token'); return; }
+    if (!id) { toast('请填写“云端备份ID”（同步后自动生成，或粘贴同一ID）'); return; }
     setCloudStatus('拉取中…');
     try {
       const json = await gistApi('GET', id, null, token);
@@ -1186,6 +1188,7 @@
       const merged = Object.assign(loadData(), incoming);
       merged._seeded = true;
       localStorage.setItem(LS_KEY, JSON.stringify(merged));
+      saveData({ gistId: id });
       setCloudStatus('已拉取 ' + new Date().toLocaleString());
       toast('已从云端拉取，正在刷新…');
       setTimeout(() => location.reload(), 700);
