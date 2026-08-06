@@ -1152,8 +1152,17 @@
       headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined
     });
-    if (!res.ok) { const t = await res.text(); throw new Error('HTTP ' + res.status + ' ' + t.slice(0, 80)); }
+    if (!res.ok) { const t = await res.text(); throw new Error('HTTP ' + res.status + ' ' + t.slice(0, 120)); }
     return res.json();
+  }
+  // 把 GitHub 返回的错误码翻译成用户能看懂的中文诊断
+  function gistDiag(err) {
+    const m = (err && err.message) || '';
+    if (m.includes('HTTP 401')) return '令牌无效或已过期：请到 GitHub 重新生成 Token（注意：生成后只显示一次，用最新那串；Fine-grained 改权限也会轮换 token）';
+    if (m.includes('HTTP 403')) return 'Token 对 Gists 无写入权限：请在 GitHub 把 Gists 权限设为 Read and write（或改用 Classic token 勾选 gist）';
+    if (m.includes('HTTP 404')) return '备份ID不存在或无权限：请确认备份ID与Token属于同一 GitHub 账号，或用正确ID重试';
+    if (m.includes('Failed to fetch') || m.includes('NetworkError')) return '网络请求失败：请确认手机/电脑能联网，且未被防火墙拦截 api.github.com';
+    return '错误：' + m;
   }
   async function syncToCloud() {
     const token = gistToken();
@@ -1170,7 +1179,7 @@
       toast('已同步到云端');
     } catch (e) {
       setCloudStatus('同步失败', false);
-      toast('同步失败：' + e.message);
+      toast('同步失败：' + gistDiag(e));
     }
   }
   async function pullFromCloud() {
@@ -1194,9 +1203,24 @@
       setTimeout(() => location.reload(), 700);
     } catch (e) {
       setCloudStatus('拉取失败', false);
-      toast('拉取失败：' + e.message);
+      toast('拉取失败：' + gistDiag(e));
     }
   }
+  // 测试连接：只做一次只读的 GET /gists，不改动任何数据，用来定位问题
+  async function testCloudConn() {
+    const token = gistToken();
+    if (!token) { toast('请先在上方填写 GitHub Token'); return; }
+    setCloudStatus('测试中…');
+    try {
+      await gistApi('GET', '', null, token);
+      setCloudStatus('连接正常（可读）', true);
+      toast('Token 有效，可读 Gists。若要同步到云端，还需 Gists 有“写入”权限');
+    } catch (e) {
+      setCloudStatus('连接异常', false);
+      toast('测试连接：' + gistDiag(e));
+    }
+  }
+  $('#testCloudConn').addEventListener('click', testCloudConn);
   $('#syncToCloud').addEventListener('click', syncToCloud);
   $('#pullFromCloud').addEventListener('click', pullFromCloud);
 
