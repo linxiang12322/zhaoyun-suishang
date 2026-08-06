@@ -691,6 +691,13 @@
       const key = 't' + t.id; // 用任务 id 去重，而非名称（避免同名演示事项吞掉真实数据）
       if (seen.has(key)) return;
       seen.add(key);
+      // 若同天已有同名的演示数据，先移除之，避免与用户录入重复显示（用户数据接管）
+      const cur = loadCalendar();
+      if (cur[day]) {
+        const before = cur[day].length;
+        cur[day] = cur[day].filter(x => !(x.name === t.title && x.id && x.id.indexOf('demo_') === 0));
+        if (cur[day].length !== before) saveData({ calendar: cur });
+      }
       calPatch[day] = calPatch[day] || [];
       const time = (t.start && t.start !== '待确认') ? t.start : '—';
       calPatch[day].push({ id: key, name: t.title, time, synced: t.sync === '系统日历' });
@@ -895,13 +902,18 @@
     saveData({ calendar: cur });
   }
   function getEvents() {
+    return loadCalendar();
+  }
+  /* 首次访问时把演示数据写入 localStorage；之后只读 localStorage，
+     这样用户删除演示日程后刷新不会再“复活” */
+  function seedDemoIfNeeded() {
+    const data = loadData();
+    if (data._seeded) return;
+    const cur = loadCalendar();
     const merged = {};
     Object.keys(demoEvents).forEach(d => { merged[d] = demoEvents[d].slice(); });
-    const stored = loadCalendar();
-    Object.keys(stored).forEach(d => {
-      merged[d] = (merged[d] || []).concat(stored[d]);
-    });
-    return merged;
+    Object.keys(cur).forEach(d => { merged[d] = (merged[d] || []).concat(cur[d]); });
+    saveData({ calendar: merged, _seeded: true });
   }
   /* 任务 → 日号：基于真实系统日期推算，不再硬编码 2026/8/5。
      兼容规则引擎输出（"8月5日（周X）"）与 LLM 输出（今天/明天/后天/周X/周末）。 */
@@ -968,6 +980,7 @@
 
   let calYear = CAL_YEAR, calMonth = CAL_MONTH;
   let calSelected = TODAY_DAY;
+  seedDemoIfNeeded();
   renderCalendar(calSelected);
   renderDaySchedule(calSelected);
   const _lbl0 = $('#calAddDayLabel'); if (_lbl0) _lbl0.textContent = calSelected;
@@ -1081,6 +1094,43 @@
   $$('.group .row[data-perm]').forEach(row => row.addEventListener('click', () => {
     toast('该权限用于' + row.dataset.perm + '，可在系统设置中管理');
   }));
+
+  /* 数据导出 / 导入：本地备份与恢复 */
+  $('#exportDataBtn').addEventListener('click', () => {
+    const data = loadData();
+    const payload = { __app: 'zhaoyun-suishang', __v: 1, __exportedAt: new Date().toISOString(), data };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0, 10);
+    a.href = url; a.download = `巢雲随行数据备份_${stamp}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    toast('数据已导出为 JSON 文件');
+  });
+
+  $('#importDataBtn').addEventListener('click', () => $('#importFile').click());
+  $('#importFile').addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result);
+        const incoming = parsed.data && typeof parsed.data === 'object' ? parsed.data : parsed;
+        if (typeof incoming !== 'object' || !incoming) throw new Error('格式无效');
+        const merged = Object.assign(loadData(), incoming);
+        merged._seeded = true; // 标记为已初始化，避免导入后演示数据重复写入
+        localStorage.setItem(LS_KEY, JSON.stringify(merged));
+        toast('数据已导入，正在刷新…');
+        setTimeout(() => location.reload(), 700);
+      } catch (err) {
+        toast('导入失败：文件格式不正确');
+      }
+      e.target.value = ''; // 允许重复导入同一文件
+    };
+    reader.readAsText(file);
+  });
 
   $('#incognito').addEventListener('change', (e) => {
     saveData({ incognito: e.target.checked });

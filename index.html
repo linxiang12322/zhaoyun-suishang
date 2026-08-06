@@ -351,7 +351,8 @@
         <div class="card group">
           <div class="row"><span>无痕模式</span><label class="switch"><input type="checkbox" id="incognito"><i></i></label></div>
           <div class="row"><span>原始文本保留</span><b>90 天 ›</b></div>
-          <div class="row"><span>导出数据</span><b>›</b></div>
+          <div class="row" id="exportDataBtn"><span>导出数据</span><b>›</b></div>
+          <div class="row" id="importDataBtn"><span>导入数据</span><b>›</b></div>
           <div class="row row-danger"><span>删除所有数据</span><b>›</b></div>
         </div>
 
@@ -360,6 +361,7 @@
           <div class="row"><span>品牌</span><b>巢雲随行 · 秦巢雲的掌上助理</b></div>
           <div class="row"><span>版本</span><b>V1.0 交互原型</b></div>
         </div>
+        <input type="file" id="importFile" accept="application/json,.json" style="display:none">
       </div>
     </section>
 
