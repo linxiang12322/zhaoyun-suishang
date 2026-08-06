@@ -356,6 +356,15 @@
           <div class="row row-danger"><span>删除所有数据</span><b>›</b></div>
         </div>
 
+        <h4 class="group-title">云同步</h4>
+        <div class="card group">
+          <div class="row"><span>GitHub Token</span><input type="password" id="gistToken" placeholder="ghp_xxx 用于云端同步" class="mini-input"></div>
+          <div class="row" id="syncToCloud"><span>同步到云端</span><b>›</b></div>
+          <div class="row" id="pullFromCloud"><span>从云端拉取</span><b>›</b></div>
+          <div class="row"><span>同步状态</span><em class="ok" id="cloudStatus">未同步</em></div>
+          <div class="row"><span>云端备份ID</span><input type="text" id="gistIdView" readonly placeholder="同步后生成，换设备需携带" class="mini-input"></div>
+        </div>
+
         <h4 class="group-title">关于</h4>
         <div class="card group">
           <div class="row"><span>品牌</span><b>巢雲随行 · 秦巢雲的掌上助理</b></div>

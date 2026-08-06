@@ -1132,6 +1132,71 @@
     reader.readAsText(file);
   });
 
+  /* 云同步（GitHub Gist 作为免服务器后端，实现跨设备同步） */
+  const GIST_FILENAME = 'zhaoyun-backup.json';
+  function gistToken() { return (loadData().gistToken || '').trim(); }
+  function gistId() { return loadData().gistId || ''; }
+  function setCloudStatus(msg, ok) {
+    const el = $('#cloudStatus'); if (!el) return;
+    el.textContent = msg; el.className = (ok === false) ? 'off' : 'ok';
+  }
+  const _tk = gistToken(); if (_tk) $('#gistToken').value = _tk;
+  function refreshGistIdView() { const el = $('#gistIdView'); if (el) el.value = gistId() || ''; }
+  refreshGistIdView();
+  $('#gistToken').addEventListener('change', (e) => { saveData({ gistToken: e.target.value.trim() }); toast('Token 已保存（仅存于本机浏览器）'); });
+  async function gistApi(method, id, body, token) {
+    const url = id ? ('https://api.github.com/gists/' + id) : 'https://api.github.com/gists';
+    const res = await fetch(url, {
+      method,
+      headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined
+    });
+    if (!res.ok) { const t = await res.text(); throw new Error('HTTP ' + res.status + ' ' + t.slice(0, 80)); }
+    return res.json();
+  }
+  async function syncToCloud() {
+    const token = gistToken();
+    if (!token) { toast('请先在上方填写 GitHub Token'); return; }
+    setCloudStatus('同步中…');
+    const payload = JSON.stringify({ __app: 'zhaoyun-suishang', __v: 1, __exportedAt: new Date().toISOString(), data: loadData() });
+    const body = { files: { [GIST_FILENAME]: { content: payload } }, description: '巢雲随行数据同步' };
+    try {
+      const id = gistId();
+      const json = await gistApi(id ? 'PATCH' : 'POST', id, body, token);
+      saveData({ gistToken: token, gistId: json.id });
+      refreshGistIdView();
+      setCloudStatus('已同步 ' + new Date().toLocaleString());
+      toast('已同步到云端');
+    } catch (e) {
+      setCloudStatus('同步失败', false);
+      toast('同步失败：' + e.message);
+    }
+  }
+  async function pullFromCloud() {
+    const token = gistToken(); const id = gistId();
+    if (!token || !id) { toast('请先“同步到云端”一次'); return; }
+    setCloudStatus('拉取中…');
+    try {
+      const json = await gistApi('GET', id, null, token);
+      const file = json.files && json.files[GIST_FILENAME];
+      const content = file && file.content;
+      if (!content) throw new Error('云端无备份内容');
+      const parsed = JSON.parse(content);
+      const incoming = (parsed.data && typeof parsed.data === 'object') ? parsed.data : parsed;
+      const merged = Object.assign(loadData(), incoming);
+      merged._seeded = true;
+      localStorage.setItem(LS_KEY, JSON.stringify(merged));
+      setCloudStatus('已拉取 ' + new Date().toLocaleString());
+      toast('已从云端拉取，正在刷新…');
+      setTimeout(() => location.reload(), 700);
+    } catch (e) {
+      setCloudStatus('拉取失败', false);
+      toast('拉取失败：' + e.message);
+    }
+  }
+  $('#syncToCloud').addEventListener('click', syncToCloud);
+  $('#pullFromCloud').addEventListener('click', pullFromCloud);
+
   $('#incognito').addEventListener('change', (e) => {
     saveData({ incognito: e.target.checked });
     if (e.target.checked) saveData({ draft: '' });
